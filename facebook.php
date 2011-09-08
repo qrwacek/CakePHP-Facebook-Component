@@ -284,19 +284,39 @@ class FacebookComponent extends Object {
         return $friends;
     }
     
+    /**
+     * Get page posts list
+     *
+     * @param mixed $pageId Facebook Fanpage ID
+     * @param array $options Available keys are: "limit", "since", "until"
+     * @return array An array of page posts 
+     */
     public function getPagePosts($pageId = null, $options = array()) {
         if (empty($pageId)) $pageId = $this->settings['pageId'];
         $posts = $this->api("/$pageId/posts", $options);
         return $posts;
     }
     
-    public function getPageFeed($pageId = null, $offset=0, $limit = 10) {
+    /**
+     * Get page feed
+     *
+     * @param mixed $pageId Facebook Fanpage ID
+     * @param array $options Available keys are: "limit", "since", "until"
+     * @return array An array of page feed entries
+     */
+    public function getPageFeed($pageId = null, $options = array()) {
         if (empty($pageId)) $pageId = $this->settings['pageId'];
-        $posts = $this->api("/$pageId/feed", array('since' => $offset, 'limit' => $limit));
+        $posts = $this->api("/$pageId/feed", $options);
         return $posts;
     }
     
-    public function getUserPages($cache = true) {
+    /**
+     * Get list of fanpages, which current user administrates
+     *
+     * @param boolean $cache TRUE if you want to cache your result
+     * @return array List of fanpages
+     */
+    public function getUserPages($cache = false) {
         $pages = false;
         if ($cache) $pages = Cache::read("pages" . $this->uid);
         if ($pages === false) {
@@ -306,6 +326,14 @@ class FacebookComponent extends Object {
         return $pages;
     }
     
+    /**
+     * Get fanpage insights
+     *
+     * @param mixed $pageId Facebook Fanpage ID
+     * @param string $type Insights category
+     * @param boolean $cache TRUE if u want to cache your result
+     * @return array List of insights
+     */
     public function getInsights($pageId = null, $type = null, $cache = true) {
         if (empty($pageId)) $pageId = $this->settings['pageId'];
         $insights = false;
@@ -317,14 +345,21 @@ class FacebookComponent extends Object {
         return $insights;
     }
     
-    public function getInsightsFull($pageId = null, $filters = array()) {
+    /**
+     * Get filtered fanpage insights
+     *
+     * @param mixed $pageId Facebook Fanpage ID
+     * @param array $filters Available keys are: "type", "since", "until", "period"
+     * @return array 
+     */
+    public function getInsightsFiltered($pageId = null, $filters = array()) {
         if (empty($pageId)) $pageId = $this->settings['pageId'];
         
         $conditions = array();
         $conditions[] = "object_id=$pageId";
         if (!empty($filters['type'])) $conditions[] = "metric='{$filters['type']}'";
-        if (!empty($filters['from_date'])) $conditions[] = "end_time>end_time_date('{$filters['from_date']['year']}-{$filters['from_date']['month']}-{$filters['from_date']['day']}')";
-        if (!empty($filters['to_date'])) $conditions[] = "end_time<end_time_date('{$filters['to_date']['year']}-{$filters['to_date']['month']}-{$filters['to_date']['day']}')";
+        if (!empty($filters['since'])) $conditions[] = "end_time>end_time_date('{$filters['since']}')";
+        if (!empty($filters['until'])) $conditions[] = "end_time<end_time_date('{$filters['until']}')";
         if (!empty($filters['period'])) $conditions[] = "period=period('{$filters['period']}')";
         
         $query = "SELECT metric, value, end_time, period FROM insights WHERE " . implode(' AND ', $conditions);
@@ -335,6 +370,12 @@ class FacebookComponent extends Object {
         return $insights;
     }
     
+    /**
+     * Delete facebook object
+     *
+     * @param mixed $id Facebook object id
+     * @return mixed Operation result
+     */
     public function delete($id) {
         return $this->api('/' . $id, 'DELETE');
     }

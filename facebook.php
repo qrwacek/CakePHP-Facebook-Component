@@ -19,16 +19,18 @@ class FacebookComponent extends Object {
      * @access private
      */
     private $_defaults = array(
-        'appId' => 'YOUR_APP_ID',
-        'secret' => 'YOUR_APP_SECRET',
-        'permissions' => 'COMMA_SEPARATED_PERMS_LIST',
-        'pageId' => 'PAGE_ID',
+        'appUrl' => 'YOUR_APP_URL', //i. e. http://apps.facebook.com/my_genius_app
+        'appId' => 'YOUR_APP_ID', //App ID/API Key
+        'secret' => 'YOUR_APP_SECRET', //App Secret
+        'permissions' => 'APP_PERMS_LIST', //Comma separated permissions list
+        'pageId' => 'PAGE_ID', //Facebook fanpage id
     );
     
     /**
      * Facebook user id for tests
      *
      * @var string
+     * @access private
      */
     private $_testAccountId = '100002193156452';
     
@@ -53,6 +55,9 @@ class FacebookComponent extends Object {
      */
     public $uid = null;
     
+    /**
+     * Call SDK methods directly from component
+     */
     public function __call($method, $arguments) {
         if (method_exists($this->facebook, $method)) {
             try {
@@ -68,6 +73,11 @@ class FacebookComponent extends Object {
         return false;
     }
     
+    /**
+     * Error handling
+     *
+     * @param FacebookApiException $e Exception object
+     */
     private function _exception(FacebookApiException $e) {
         $error_msg = $e->getType() . ': ' . $e->getMessage();
         $this->log($error_msg, LOG_DEBUG);
@@ -86,6 +96,20 @@ class FacebookComponent extends Object {
         $this->settings = array_merge($this->_defaults, $settings);
     }
     
+    /**
+     * Configure component
+     *
+     * @param array $settings 
+     */
+    public function settings($settings = array()) {
+        $this->settings = array_merge($this->settings, $settings);
+    }
+    
+    /**
+     * Init SDK (and connect to facebook?)
+     *
+     * @param boolean $start If true, connect to facebook api and get current user data. Defaults to true.
+     */
     public function init($start = true) {
         App::import('Vendor', 'Facebook', array('file' => 'facebook' . DS .'facebook.php'));
         $this->facebook = new Facebook(array(
@@ -107,30 +131,47 @@ class FacebookComponent extends Object {
         }
     }
     
+    /**
+     * Retrieve valid access token
+     */
     private function _authRedirect() {
-        $url = $this->facebook->getLoginUrl(array(
-            'scope' => $this->settings['permissions'],
-            'redirect_uri' => !empty($this->settings['appUrl']) ? $this->settings['appUrl'] : null
-        ));
+        $options = array('scope' => $this->settings['permissions']);
+        if (!empty($this->settings['appUrl'])) {
+            $options['redirect_uri'] = $this->settings['appUrl'];
+        }
+        $url = $this->facebook->getLoginUrl($options);
         echo "<script type=\"text/javascript\">top.location.href = '$url';</script>";
         exit;
     }
     
-    public function isPageFan($cache = true) {
+    /**
+     * Check if user likes our fanpage
+     *
+     * @param mixed $pageId Fanpage id
+     * @param boolean $cache TRUE if you want to cache your result
+     * @return boolean TRUE if user likes our fanpage
+     */
+    public function isPageFan($pageId = null, $cache = true) {
+        if (empty($pageId)) $pageId = $this->settings['pageId'];
         $isFan = false;
         if ($cache) $isFan = Cache::read("isFan" . $this->uid);
         if($isFan === false) {
-            $isFan = $this->api(array(
-                "method" => "pages.isFan",
-                "page_id" => $this->settings['pageId'],
-                "uid" => $this->uid,
-            ));
+            $result = $this->api('/' . $this->uid . '/likes/' . $this->settings['pageId']);
+            $isFan = (!empty($result['data']) ? true : false);
             if ($cache && $isFan) Cache::write("isFan" . $this->uid, true);
         }
         return $isFan;
     }
     
-    public function getFriendsPageFans($cache = false) {
+    /**
+     * Get list of user friends who like our fanpage
+     *
+     * @param mixed $pageId Fanpage id
+     * @param boolean $cache TRUE if you want to cache your result
+     * @return mixed An array of user friends
+     */
+    public function getFriendsPageFans($pageId = null, $cache = false) {
+        if (empty($pageId)) $pageId = $this->settings['pageId'];
         $friends_fans = false;
         if ($cache) $friends_fans = Cache::read("friendsPageFans" . $this->uid);
         if ($friends_fans === false) {
@@ -145,27 +186,41 @@ class FacebookComponent extends Object {
         return $friends_fans;
     }
     
+    /**
+     * Get list of user friends who is using current app
+     *
+     * @return mixed An array of user friends
+     */
     public function getFriendsAppUsers() {
         return $this->api(array('method' => 'friends.getAppUsers'));
     }
     
+    /**
+     * Publish stream to $uid wall. <br />
+     * Full example options record below
+     * 
+     * <code>
+     * $options = array(
+     *     'message' => 'This is just a test message',
+     *     'link' => 'http://www.facebook.com',
+     *     'picture' => 'http://static.ak.fbcdn.net/rsrc.php/v1/zK/r/NGGPJRdOdhs.png',
+     *     'name' => 'Tets link name',
+     *     'caption' => 'Test link caption',
+     *     'description' => 'Test link description',
+     *     'actions' => '{"name": "View on Google", "link": "http://www.google.com"}',
+     *     'privacy' => '{"value": "ALL_FRIENDS"}',
+     *     'targeting' => '{"countries":"US","regions":"6,53","locales":"6"}',
+     * );
+     * </code>
+     * 
+     * @param mixed $uid Wall owner id
+     * @param array $options Record to publish
+     * @return boolean TRUE on success, FALSE on failure
+     */
     public function streamPublish($uid = null, $options = array()) {
         if (empty($uid)) $uid = $this->_testAccountId;
-//        $defaults = array(
-//            'message' => 'This is just a test message',
-//            'link' => 'http://www.facebook.com',
-//            'picture' => 'http://static.ak.fbcdn.net/rsrc.php/v1/zK/r/NGGPJRdOdhs.png',
-//            'name' => 'Tets link name',
-//            'caption' => 'Test link caption',
-//            'description' => 'Test link description',
-//            'actions' => '{"name": "View on Google", "link": "http://www.google.com"}',
-//            'privacy' => '{"value": "ALL_FRIENDS"}',
-//            'targeting' => '{"countries":"US","regions":"6,53","locales":"6"}',
-//            
-//        );
-//        $options = array_merge($defaults, $options);
         $result = $this->api("/{$uid}/feed", 'POST', $options);
-        return true;
+        return (!empty($result['id']) ? true : false);
     }
     
     /**
@@ -181,7 +236,7 @@ class FacebookComponent extends Object {
             $result = $this->api('/me/photos', 'POST', array(
                 'source' => "@" . $src
             ));
-        } elseif (is_int($album)) {
+        } elseif (is_numeric($album)) {
             $result = $this->api('/' . $album . '/photos', 'POST', array(
                 'source' => "@" . $src
             ));
@@ -214,6 +269,12 @@ class FacebookComponent extends Object {
         }
     }
     
+    /**
+     * Get user friends list
+     *
+     * @param boolean $cache TRUE if you want to cache your result
+     * @return mixed 
+     */
     public function getFriends($cache = true) {
         if ($cache) $friends = Cache::read("friends" . $this->uid);
         if ($friends === false) {
